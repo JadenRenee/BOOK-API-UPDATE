@@ -1,0 +1,74 @@
+from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.exc import SQLAlchemyError
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///books.db'
+db = SQLAlchemy(app)
+
+class Book(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    book_name = db.Column(db.String(100), nullable=False)
+    author = db.Column(db.String(100), nullable=False)
+    publisher = db.Column(db.String(100), nullable=False)
+
+@app.route('/books', methods=['POST'])
+def create_book():
+    try:
+        data = request.get_json()
+        if not data or not all(key in data for key in ['book_name', 'author', 'publisher']):
+            return jsonify({'error': 'Invalid input'}), 400
+        new_book = Book(book_name=data['book_name'], author=data['author'], publisher=data['publisher'])
+        db.session.add(new_book)
+        db.session.commit()
+        return jsonify({'message': 'Book created successfully'}), 201
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/books', methods=['GET'])
+def get_books():
+    try:
+        books = Book.query.all()
+        return jsonify([{'id': book.id, 'book_name': book.book_name, 'author': book.author, 'publisher': book.publisher} for book in books])
+    except SQLAlchemyError as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/books/<int:id>', methods=['GET'])
+def get_book(id):
+    try:
+        book = Book.query.get_or_404(id)
+        return jsonify({'id': book.id, 'book_name': book.book_name, 'author': book.author, 'publisher': book.publisher})
+    except SQLAlchemyError as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/books/<int:id>', methods=['PUT'])
+def update_book(id):
+    try:
+        data = request.get_json()
+        if not data or not all(key in data for key in ['book_name', 'author', 'publisher']):
+            return jsonify({'error': 'Invalid input'}), 400
+        book = Book.query.get_or_404(id)
+        book.book_name = data['book_name']
+        book.author = data['author']
+        book.publisher = data['publisher']
+        db.session.commit()
+        return jsonify({'message': 'Book updated successfully'})
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/books/<int:id>', methods=['DELETE'])
+def delete_book(id):
+    try:
+        book = Book.query.get_or_404(id)
+        db.session.delete(book)
+        db.session.commit()
+        return jsonify({'message': 'Book deleted successfully'})
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    db.create_all()
+    app.run(debug=True)
